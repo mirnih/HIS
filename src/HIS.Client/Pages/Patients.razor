@@ -1,0 +1,277 @@
+@page "/patients"
+@inject ApiClient Api
+@inject NavigationManager Navigation
+
+<PageTitle>Пациенты</PageTitle>
+
+<div class="page-header">
+    <div>
+        <div class="eyebrow">Рабочее место медработника</div>
+        <h1>Пациенты</h1>
+    </div>
+    <button class="btn btn-primary" @onclick="StartCreate">Добавить пациента</button>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(error))
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+@if (showForm)
+{
+    <div class="content-card mb-4">
+        <h2>@(editingId is null ? "Новый пациент" : "Карточка пациента")</h2>
+        <EditForm Model="form" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Фамилия</label>
+                    <InputText class="form-control" @bind-Value="form.LastName" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Имя</label>
+                    <InputText class="form-control" @bind-Value="form.FirstName" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Отчество</label>
+                    <InputText class="form-control" @bind-Value="form.MiddleName" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Дата рождения</label>
+                    <InputDate class="form-control" @bind-Value="form.BirthDate" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Административный пол</label>
+                    <InputSelect class="form-select" @bind-Value="form.Gender">
+                        <option value="">Выберите значение</option>
+                        <option value="@AdministrativeGender.Unknown">НУ</option>
+                        <option value="@AdministrativeGender.Male">М</option>
+                        <option value="@AdministrativeGender.Female">Ж</option>
+                    </InputSelect>
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label">Комментарий</label>
+                    <InputText class="form-control" @bind-Value="form.Comment" maxlength="32" />
+                </div>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-primary" type="submit">Сохранить</button>
+                <button class="btn btn-light" type="button" @onclick="CancelForm">Отмена</button>
+            </div>
+        </EditForm>
+    </div>
+}
+
+<div class="content-card table-responsive">
+    @if (loading)
+    {
+        <p class="text-secondary mb-0">Загрузка...</p>
+    }
+    else if (patients.Count == 0)
+    {
+        <p class="empty-state">Пациентов пока нет.</p>
+    }
+    else
+    {
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>ФИО</th>
+                    <th>Дата рождения</th>
+                    <th>Пол</th>
+                    <th>ЭМК</th>
+                    <th class="text-end">Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var patient in patients)
+                {
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">@FullName(patient)</div>
+                            @if (!string.IsNullOrWhiteSpace(patient.Comment))
+                            {
+                                <small class="text-secondary">@patient.Comment</small>
+                            }
+                        </td>
+                        <td>@patient.BirthDate.ToString("dd.MM.yyyy")</td>
+                        <td>@GenderText(patient.Gender)</td>
+                        <td>
+                            <span class="status-badge @(patient.HasMedicalRecord ? "status-record" : "status-muted")">
+                                @(patient.HasMedicalRecord ? "ЭМК есть" : "Нет ЭМК")
+                            </span>
+                        </td>
+                        <td class="text-end table-actions">
+                            @if (patient.HasMedicalRecord)
+                            {
+                                <button class="btn btn-sm btn-primary" @onclick="() => OpenMedicalRecord(patient.Id)">Открыть ЭМК</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => CreateMedicalRecordAsync(patient.Id)">Создать ЭМК</button>
+                            }
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => StartEdit(patient)">Карточка</button>
+                            <button class="btn btn-sm btn-outline-danger"
+                                    disabled="@patient.HasMedicalRecord"
+                                    title="@(patient.HasMedicalRecord ? "Пациента с ЭМК удалить нельзя" : null)"
+                                    @onclick="() => DeleteAsync(patient.Id)">
+                                Удалить
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private List<PatientDto> patients = [];
+    private PatientForm form = new();
+    private int? editingId;
+    private bool showForm;
+    private bool loading = true;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        error = null;
+
+        try
+        {
+            patients = await Api.GetPatientsAsync();
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void StartCreate()
+    {
+        editingId = null;
+        form = new PatientForm
+        {
+            BirthDate = DateTime.Today,
+            Gender = AdministrativeGender.Unknown
+        };
+        showForm = true;
+        error = null;
+    }
+
+    private void StartEdit(PatientDto patient)
+    {
+        editingId = patient.Id;
+        form = new PatientForm
+        {
+            FirstName = patient.FirstName,
+            LastName = patient.LastName,
+            MiddleName = patient.MiddleName,
+            BirthDate = patient.BirthDate,
+            Gender = patient.Gender,
+            Comment = patient.Comment
+        };
+        showForm = true;
+        error = null;
+    }
+
+    private void CancelForm()
+    {
+        showForm = false;
+        editingId = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        try
+        {
+            if (editingId is null)
+            {
+                await Api.CreatePatientAsync(form);
+            }
+            else
+            {
+                await Api.UpdatePatientAsync(editingId.Value, new UpdatePatientRequest
+                {
+                    FirstName = form.FirstName,
+                    LastName = form.LastName,
+                    MiddleName = form.MiddleName,
+                    BirthDate = form.BirthDate,
+                    Gender = form.Gender,
+                    Comment = form.Comment
+                });
+            }
+
+            CancelForm();
+            await LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        try
+        {
+            await Api.DeletePatientAsync(id);
+            await LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+    }
+
+    private async Task CreateMedicalRecordAsync(int patientId)
+    {
+        try
+        {
+            await Api.CreateMedicalRecordAsync(patientId);
+            OpenMedicalRecord(patientId);
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+    }
+
+    private void OpenMedicalRecord(int patientId)
+    {
+        Navigation.NavigateTo($"medical-record/{patientId}");
+    }
+
+    private static string FullName(PatientDto patient)
+    {
+        return string.Join(" ", new[]
+        {
+            patient.LastName,
+            patient.FirstName,
+            patient.MiddleName
+        }.Where(x => !string.IsNullOrWhiteSpace(x)));
+    }
+
+    private static string GenderText(AdministrativeGender gender)
+    {
+        return gender switch
+        {
+            AdministrativeGender.Male => "М",
+            AdministrativeGender.Female => "Ж",
+            _ => "НУ"
+        };
+    }
+
+    private class PatientForm : CreatePatientRequest { }
+}

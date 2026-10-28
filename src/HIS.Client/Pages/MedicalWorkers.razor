@@ -1,0 +1,191 @@
+@page "/admin/medical-workers"
+@inject ApiClient Api
+
+<PageTitle>Медработники</PageTitle>
+
+<div class="page-header">
+    <div>
+        <div class="eyebrow">Администратор</div>
+        <h1>Медработники</h1>
+    </div>
+    <button class="btn btn-primary" @onclick="StartCreate">Добавить медработника</button>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(error))
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+@if (showForm)
+{
+    <div class="content-card mb-4">
+        <h2>@(editingId is null ? "Новый медработник" : "Редактирование медработника")</h2>
+        <EditForm Model="form" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Имя</label>
+                    <InputText class="form-control" @bind-Value="form.FirstName" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Фамилия</label>
+                    <InputText class="form-control" @bind-Value="form.LastName" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Должность</label>
+                    <InputText class="form-control" @bind-Value="form.Position" />
+                </div>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-primary" type="submit">Сохранить</button>
+                <button class="btn btn-light" type="button" @onclick="CancelForm">Отмена</button>
+            </div>
+        </EditForm>
+    </div>
+}
+
+<div class="content-card table-responsive">
+    @if (loading)
+    {
+        <p class="text-secondary mb-0">Загрузка...</p>
+    }
+    else if (workers.Count == 0)
+    {
+        <p class="empty-state">Медработников пока нет.</p>
+    }
+    else
+    {
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>ФИО</th>
+                    <th>Должность</th>
+                    <th>Статус</th>
+                    <th class="text-end">Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var worker in workers)
+                {
+                    <tr>
+                        <td>@worker.LastName @worker.FirstName</td>
+                        <td>@worker.Position</td>
+                        <td><span class="status-badge status-active">Активен</span></td>
+                        <td class="text-end table-actions">
+                            <button class="btn btn-sm btn-outline-primary" @onclick="() => StartEdit(worker)">Изменить</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(worker.Id)">Удалить</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private List<MedicalWorkerDto> workers = [];
+    private WorkerForm form = new();
+    private int? editingId;
+    private bool showForm;
+    private bool loading = true;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        error = null;
+
+        try
+        {
+            workers = await Api.GetMedicalWorkersAsync();
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void StartCreate()
+    {
+        editingId = null;
+        form = new WorkerForm();
+        showForm = true;
+        error = null;
+    }
+
+    private void StartEdit(MedicalWorkerDto worker)
+    {
+        editingId = worker.Id;
+        form = new WorkerForm
+        {
+            FirstName = worker.FirstName,
+            LastName = worker.LastName,
+            Position = worker.Position
+        };
+        showForm = true;
+        error = null;
+    }
+
+    private void CancelForm()
+    {
+        showForm = false;
+        editingId = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        try
+        {
+            if (editingId is null)
+            {
+                await Api.CreateMedicalWorkerAsync(new CreateMedicalWorkerRequest
+                {
+                    FirstName = form.FirstName,
+                    LastName = form.LastName,
+                    Position = form.Position
+                });
+            }
+            else
+            {
+                await Api.UpdateMedicalWorkerAsync(editingId.Value, new UpdateMedicalWorkerRequest
+                {
+                    FirstName = form.FirstName,
+                    LastName = form.LastName,
+                    Position = form.Position
+                });
+            }
+
+            CancelForm();
+            await LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        try
+        {
+            await Api.DeleteMedicalWorkerAsync(id);
+            await LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+    }
+
+    private class WorkerForm : CreateMedicalWorkerRequest { }
+}

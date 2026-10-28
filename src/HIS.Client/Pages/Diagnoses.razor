@@ -1,0 +1,212 @@
+@page "/admin/diagnoses"
+@inject ApiClient Api
+
+<PageTitle>Диагнозы</PageTitle>
+
+<div class="page-header">
+    <div>
+        <div class="eyebrow">Администратор · Справочники</div>
+        <h1>Диагнозы</h1>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <label class="btn btn-outline-secondary mb-0">
+            Загрузить JSON
+            <InputFile class="d-none" OnChange="ImportAsync" accept=".json,application/json" />
+        </label>
+        <button class="btn btn-primary" @onclick="StartCreate">Добавить диагноз</button>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <div class="alert @(isError ? "alert-danger" : "alert-success")">@message</div>
+}
+
+@if (showForm)
+{
+    <div class="content-card mb-4">
+        <h2>@(editingId is null ? "Новый диагноз" : "Редактирование диагноза")</h2>
+        <EditForm Model="form" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Код (ровно 6 символов)</label>
+                    <InputText class="form-control" @bind-Value="form.Code" maxlength="6" />
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label">Наименование</label>
+                    <InputText class="form-control" @bind-Value="form.Name" />
+                </div>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-primary" type="submit">Сохранить</button>
+                <button class="btn btn-light" type="button" @onclick="CancelForm">Отмена</button>
+            </div>
+        </EditForm>
+    </div>
+}
+
+<div class="content-card table-responsive">
+    @if (loading)
+    {
+        <p class="text-secondary mb-0">Загрузка...</p>
+    }
+    else if (diagnoses.Count == 0)
+    {
+        <p class="empty-state">Справочник пока пуст.</p>
+    }
+    else
+    {
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Код</th>
+                    <th>Наименование</th>
+                    <th class="text-end">Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var diagnosis in diagnoses)
+                {
+                    <tr>
+                        <td><span class="code-chip">@diagnosis.Code</span></td>
+                        <td>@diagnosis.Name</td>
+                        <td class="text-end table-actions">
+                            <button class="btn btn-sm btn-outline-primary" @onclick="() => StartEdit(diagnosis)">Изменить</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(diagnosis.Id)">Удалить</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private List<DiagnosisDto> diagnoses = [];
+    private DiagnosisForm form = new();
+    private int? editingId;
+    private bool showForm;
+    private bool loading = true;
+    private bool isError;
+    private string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+
+        try
+        {
+            diagnoses = await Api.GetDiagnosesAsync();
+        }
+        catch (Exception exception)
+        {
+            ShowError(exception);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void StartCreate()
+    {
+        editingId = null;
+        form = new DiagnosisForm();
+        showForm = true;
+        message = null;
+    }
+
+    private void StartEdit(DiagnosisDto diagnosis)
+    {
+        editingId = diagnosis.Id;
+        form = new DiagnosisForm
+        {
+            Code = diagnosis.Code,
+            Name = diagnosis.Name
+        };
+        showForm = true;
+        message = null;
+    }
+
+    private void CancelForm()
+    {
+        showForm = false;
+        editingId = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        try
+        {
+            if (editingId is null)
+            {
+                await Api.CreateDiagnosisAsync(new CreateDiagnosisRequest
+                {
+                    Code = form.Code,
+                    Name = form.Name
+                });
+            }
+            else
+            {
+                await Api.UpdateDiagnosisAsync(editingId.Value, new UpdateDiagnosisRequest
+                {
+                    Code = form.Code,
+                    Name = form.Name
+                });
+            }
+
+            CancelForm();
+            message = null;
+            await LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            ShowError(exception);
+        }
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        try
+        {
+            await Api.DeleteDiagnosisAsync(id);
+            message = null;
+            await LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            ShowError(exception);
+        }
+    }
+
+    private async Task ImportAsync(InputFileChangeEventArgs args)
+    {
+        try
+        {
+            await using var stream = args.File.OpenReadStream(1024 * 1024);
+            await Api.ImportDiagnosesAsync(stream, args.File.Name);
+            isError = false;
+            message = "Файл обработан. Новые диагнозы добавлены.";
+            await LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            ShowError(exception);
+        }
+    }
+
+    private void ShowError(Exception exception)
+    {
+        isError = true;
+        message = exception.Message;
+    }
+
+    private class DiagnosisForm : CreateDiagnosisRequest { }
+}

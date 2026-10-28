@@ -1,0 +1,446 @@
+@page "/medical-record/{PatientId:int}"
+@using System.Text.Json
+@inject ApiClient Api
+
+<PageTitle>Электронная медицинская карта</PageTitle>
+
+@if (loading)
+{
+    <div class="content-card">Загрузка ЭМК...</div>
+}
+else if (!string.IsNullOrWhiteSpace(error) && medicalRecord is null)
+{
+    <div class="alert alert-danger">@error</div>
+    <a class="btn btn-light" href="patients">К списку пациентов</a>
+}
+else if (medicalRecord is not null && patient is not null)
+{
+    <div class="page-header record-header">
+        <div>
+            <a class="back-link" href="patients">← К списку пациентов</a>
+            <div class="eyebrow mt-3">Электронная медицинская карта</div>
+            <h1>@PatientFullName()</h1>
+            <div class="text-secondary">
+                @patient.BirthDate.ToString("dd.MM.yyyy") · @GenderText(patient.Gender)
+            </div>
+        </div>
+        <div class="lock-panel">
+            @if (isEditing)
+            {
+                <span class="status-badge status-active">Редактирование разрешено</span>
+                <div class="small text-secondary mt-2">@SelectedWorkerName()</div>
+                <button class="btn btn-sm btn-outline-secondary mt-2" @onclick="Lock">Заблокировать</button>
+            }
+            else
+            {
+                <span class="status-badge status-muted">Только просмотр</span>
+                <label class="form-label mt-3">Кто вносит изменения</label>
+                <InputSelect class="form-select form-select-sm" @bind-Value="selectedMedicalWorkerId">
+                    <option value="">Выберите медработника</option>
+                    @foreach (var worker in workers)
+                    {
+                        <option value="@worker.Id">@worker.LastName @worker.FirstName — @worker.Position</option>
+                    }
+                </InputSelect>
+                <button class="btn btn-primary btn-sm mt-2 w-100"
+                        disabled="@(selectedMedicalWorkerId is null)"
+                        @onclick="Unlock">
+                    Разблокировать для редактирования
+                </button>
+            }
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(error))
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    <div class="record-tabs mb-4">
+        <button class="record-tab @(activeSection == "diagnoses" ? "active" : null)" @onclick="ShowDiagnoses">Диагнозы</button>
+        <button class="record-tab @(activeSection == "prescriptions" ? "active" : null)" @onclick="ShowPrescriptions">Назначения</button>
+        <button class="record-tab @(activeSection == "history" ? "active" : null)" @onclick="ShowHistory">История изменений</button>
+    </div>
+
+    @if (activeSection == "diagnoses")
+    {
+        <div class="content-card">
+            <div class="section-heading">
+                <h2>Диагнозы</h2>
+                @if (isEditing)
+                {
+                    <div class="inline-editor">
+                        <InputSelect class="form-select form-select-sm" @bind-Value="selectedDiagnosisId">
+                            <option value="">Выберите диагноз</option>
+                            @foreach (var diagnosis in AvailableDiagnoses())
+                            {
+                                <option value="@diagnosis.Id">@diagnosis.Code — @diagnosis.Name</option>
+                            }
+                        </InputSelect>
+                        <button class="btn btn-sm btn-primary"
+                                disabled="@(selectedDiagnosisId is null)"
+                                @onclick="AddDiagnosisAsync">
+                            Добавить
+                        </button>
+                    </div>
+                }
+            </div>
+
+            @if (medicalRecord.Diagnoses.Count == 0)
+            {
+                <p class="empty-state">Диагнозы не добавлены.</p>
+            }
+            else
+            {
+                <div class="list-group list-group-flush">
+                    @foreach (var diagnosis in medicalRecord.Diagnoses)
+                    {
+                        <div class="list-group-item px-0 d-flex justify-content-between align-items-center gap-3">
+                            <div><span class="code-chip me-2">@diagnosis.Code</span>@diagnosis.Name</div>
+                            @if (isEditing)
+                            {
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveDiagnosisAsync(diagnosis.DiagnosisId)">Удалить</button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+    else if (activeSection == "prescriptions")
+    {
+        <div class="content-card">
+            <div class="section-heading">
+                <h2>Назначения</h2>
+            </div>
+
+            @if (isEditing)
+            {
+                <div class="inline-editor prescription-editor mb-4">
+                    <input class="form-control" placeholder="Новое назначение (3–128 символов)" maxlength="128" @bind="newPrescriptionText" />
+                    <button class="btn btn-primary" disabled="@(newPrescriptionText.Trim().Length < 3)" @onclick="AddPrescriptionAsync">Добавить</button>
+                </div>
+            }
+
+            @if (medicalRecord.Prescriptions.Count == 0)
+            {
+                <p class="empty-state">Назначения не добавлены.</p>
+            }
+            else
+            {
+                <div class="prescription-list">
+                    @foreach (var prescription in medicalRecord.Prescriptions)
+                    {
+                        <div class="prescription-row @(prescription.IsActive ? null : "inactive")">
+                            <div class="flex-grow-1">
+                                @if (editingPrescriptionId == prescription.Id)
+                                {
+                                    <input class="form-control" maxlength="128" @bind="editedPrescriptionText" />
+                                }
+                                else
+                                {
+                                    <div class="fw-semibold">@prescription.Text</div>
+                                    <span class="status-badge @(prescription.IsActive ? "status-active" : "status-muted")">
+                                        @(prescription.IsActive ? "Активно" : "Неактивно")
+                                    </span>
+                                }
+                            </div>
+                            @if (isEditing && prescription.IsActive)
+                            {
+                                <div class="table-actions">
+                                    @if (editingPrescriptionId == prescription.Id)
+                                    {
+                                        <button class="btn btn-sm btn-primary" disabled="@(editedPrescriptionText.Trim().Length < 3)" @onclick="SavePrescriptionEditAsync">Сохранить</button>
+                                        <button class="btn btn-sm btn-light" @onclick="CancelPrescriptionEdit">Отмена</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => StartPrescriptionEdit(prescription)">Изменить</button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => CancelPrescriptionAsync(prescription.Id)">Отменить</button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="content-card table-responsive">
+            <h2>История изменений</h2>
+            @if (history.Count == 0)
+            {
+                <p class="empty-state">Изменений пока нет.</p>
+            }
+            else
+            {
+                <table class="table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Дата и время</th>
+                            <th>Медработник</th>
+                            <th>Действие</th>
+                            <th>Описание</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in history)
+                        {
+                            <tr>
+                                <td class="text-nowrap">@item.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
+                                <td>@item.MedicalWorkerFullName</td>
+                                <td>@ActionText(item.Action)</td>
+                                <td>@HistoryDescription(item)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter]
+    public int PatientId { get; set; }
+
+    private PatientDto? patient;
+    private MedicalRecordDto? medicalRecord;
+    private List<MedicalWorkerDto> workers = [];
+    private List<DiagnosisDto> diagnoses = [];
+    private List<MedicalRecordHistoryDto> history = [];
+    private int? selectedMedicalWorkerId;
+    private int? selectedDiagnosisId;
+    private int? editingPrescriptionId;
+    private string newPrescriptionText = string.Empty;
+    private string editedPrescriptionText = string.Empty;
+    private string activeSection = "diagnoses";
+    private bool isEditing;
+    private bool loading = true;
+    private string? error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadAllAsync();
+    }
+
+    private async Task LoadAllAsync()
+    {
+        loading = true;
+        error = null;
+
+        try
+        {
+            patient = await Api.GetPatientAsync(PatientId);
+            medicalRecord = await Api.GetMedicalRecordAsync(PatientId);
+            workers = await Api.GetMedicalWorkersAsync();
+            diagnoses = await Api.GetDiagnosesAsync();
+            history = await Api.GetMedicalRecordHistoryAsync(medicalRecord.Id);
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task RefreshRecordAsync()
+    {
+        medicalRecord = await Api.GetMedicalRecordAsync(PatientId);
+        history = await Api.GetMedicalRecordHistoryAsync(medicalRecord.Id);
+    }
+
+    private void Unlock()
+    {
+        if (selectedMedicalWorkerId is not null)
+        {
+            isEditing = true;
+            error = null;
+        }
+    }
+
+    private void ShowDiagnoses() => activeSection = "diagnoses";
+
+    private void ShowPrescriptions() => activeSection = "prescriptions";
+
+    private void ShowHistory() => activeSection = "history";
+
+    private void Lock()
+    {
+        isEditing = false;
+        selectedMedicalWorkerId = null;
+        selectedDiagnosisId = null;
+        editingPrescriptionId = null;
+        newPrescriptionText = string.Empty;
+        editedPrescriptionText = string.Empty;
+    }
+
+    private async Task AddDiagnosisAsync()
+    {
+        await RunChangeAsync(() => Api.AddDiagnosisAsync(
+            medicalRecord!.Id,
+            new AddDiagnosisRequest
+            {
+                MedicalWorkerId = selectedMedicalWorkerId,
+                DiagnosisId = selectedDiagnosisId
+            }));
+    }
+
+    private async Task RemoveDiagnosisAsync(int diagnosisId)
+    {
+        await RunChangeAsync(() => Api.RemoveDiagnosisAsync(
+            medicalRecord!.Id,
+            diagnosisId,
+            new RemoveDiagnosisRequest
+            {
+                MedicalWorkerId = selectedMedicalWorkerId
+            }));
+    }
+
+    private async Task AddPrescriptionAsync()
+    {
+        await RunChangeAsync(() => Api.AddPrescriptionAsync(
+            medicalRecord!.Id,
+            new AddPrescriptionRequest
+            {
+                MedicalWorkerId = selectedMedicalWorkerId,
+                Text = newPrescriptionText.Trim()
+            }));
+    }
+
+    private async Task CancelPrescriptionAsync(int prescriptionId)
+    {
+        await RunChangeAsync(() => Api.CancelPrescriptionAsync(
+            medicalRecord!.Id,
+            prescriptionId,
+            new CancelPrescriptionRequest
+            {
+                MedicalWorkerId = selectedMedicalWorkerId
+            }));
+    }
+
+    private void StartPrescriptionEdit(PrescriptionDto prescription)
+    {
+        editingPrescriptionId = prescription.Id;
+        editedPrescriptionText = prescription.Text;
+    }
+
+    private void CancelPrescriptionEdit()
+    {
+        editingPrescriptionId = null;
+        editedPrescriptionText = string.Empty;
+    }
+
+    private async Task SavePrescriptionEditAsync()
+    {
+        var prescriptionId = editingPrescriptionId!.Value;
+
+        await RunChangeAsync(() => Api.EditPrescriptionAsync(
+            medicalRecord!.Id,
+            prescriptionId,
+            new EditPrescriptionRequest
+            {
+                MedicalWorkerId = selectedMedicalWorkerId,
+                Text = editedPrescriptionText.Trim()
+            }));
+    }
+
+    private async Task RunChangeAsync(Func<Task> operation)
+    {
+        error = null;
+
+        try
+        {
+            await operation();
+            await RefreshRecordAsync();
+            Lock();
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+    }
+
+    private IEnumerable<DiagnosisDto> AvailableDiagnoses()
+    {
+        var currentIds = medicalRecord!.Diagnoses.Select(x => x.DiagnosisId).ToHashSet();
+        return diagnoses.Where(x => !currentIds.Contains(x.Id));
+    }
+
+    private string SelectedWorkerName()
+    {
+        var worker = workers.FirstOrDefault(x => x.Id == selectedMedicalWorkerId);
+        return worker is null
+            ? string.Empty
+            : $"{worker.LastName} {worker.FirstName}, {worker.Position}";
+    }
+
+    private string PatientFullName()
+    {
+        return string.Join(" ", new[]
+        {
+            patient!.LastName,
+            patient.FirstName,
+            patient.MiddleName
+        }.Where(x => !string.IsNullOrWhiteSpace(x)));
+    }
+
+    private static string GenderText(AdministrativeGender gender)
+    {
+        return gender switch
+        {
+            AdministrativeGender.Male => "М",
+            AdministrativeGender.Female => "Ж",
+            _ => "НУ"
+        };
+    }
+
+    private static string ActionText(MedicalRecordAction action)
+    {
+        return action switch
+        {
+            MedicalRecordAction.DiagnosisAdded => "Диагноз добавлен",
+            MedicalRecordAction.DiagnosisRemoved => "Диагноз удален",
+            MedicalRecordAction.PrescriptionAdded => "Назначение добавлено",
+            MedicalRecordAction.PrescriptionCancelled => "Назначение отменено",
+            MedicalRecordAction.PrescriptionEdited => "Назначение изменено",
+            _ => action.ToString()
+        };
+    }
+
+    private static string HistoryDescription(MedicalRecordHistoryDto item)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(item.Data);
+            var root = document.RootElement;
+
+            return item.Action switch
+            {
+                MedicalRecordAction.DiagnosisAdded or MedicalRecordAction.DiagnosisRemoved =>
+                    $"{GetString(root, "code")} — {GetString(root, "name")}",
+                MedicalRecordAction.PrescriptionAdded or MedicalRecordAction.PrescriptionCancelled =>
+                    GetString(root, "text"),
+                MedicalRecordAction.PrescriptionEdited =>
+                    $"{GetString(root, "oldText")} → {GetString(root, "newText")}",
+                _ => item.Data
+            };
+        }
+        catch (JsonException)
+        {
+            return item.Data;
+        }
+    }
+
+    private static string GetString(JsonElement element, string propertyName)
+    {
+        return element.TryGetProperty(propertyName, out var property)
+            ? property.GetString() ?? string.Empty
+            : string.Empty;
+    }
+}

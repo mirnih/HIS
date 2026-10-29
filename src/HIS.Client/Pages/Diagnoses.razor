@@ -1,4 +1,5 @@
 @page "/admin/diagnoses"
+@attribute [Authorize(Roles = "Administrator")]
 @inject ApiClient Api
 
 <PageTitle>Диагнозы</PageTitle>

@@ -1,10 +1,13 @@
+using HIS.Api.Security;
 using HIS.Api.Services;
 using HIS.Contracts.Diagnoses;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HIS.Api.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/diagnoses")]
 public class DiagnosesController : ControllerBase
 {
@@ -37,6 +40,7 @@ public class DiagnosesController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = AuthorizationPolicies.Administrator)]
     public async Task<ActionResult<DiagnosisDto>> Create(
         CreateDiagnosisRequest request)
     {
@@ -55,6 +59,7 @@ public class DiagnosesController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Policy = AuthorizationPolicies.Administrator)]
     public async Task<IActionResult> Update(
         int id,
         UpdateDiagnosisRequest request)
@@ -75,6 +80,7 @@ public class DiagnosesController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Policy = AuthorizationPolicies.Administrator)]
     public async Task<IActionResult> Delete(int id)
     {
         var result = await _service.DeleteAsync(id);
@@ -93,6 +99,7 @@ public class DiagnosesController : ControllerBase
     }
 
     [HttpPost("import")]
+    [Authorize(Policy = AuthorizationPolicies.Administrator)]
     public async Task<IActionResult> Import(IFormFile file)
     {
         if (file.Length == 0)

@@ -1,0 +1,61 @@
+@page "/login"
+@attribute [AllowAnonymous]
+@inject ApiClient Api
+@inject NavigationManager Navigation
+
+<PageTitle>Вход медработника</PageTitle>
+
+<div class="auth-card">
+    <div class="eyebrow">HIS · Медработник</div>
+    <h1>Вход</h1>
+    <p class="text-secondary mt-2">Используйте логин и пароль, выданные администратором.</p>
+
+    @if (!string.IsNullOrWhiteSpace(error))
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    <EditForm Model="form" OnValidSubmit="LoginAsync">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+        <div class="mb-3">
+            <label class="form-label">Логин</label>
+            <InputText class="form-control" @bind-Value="form.Username" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Пароль</label>
+            <InputText class="form-control" type="password" @bind-Value="form.Password" />
+        </div>
+        <button class="btn btn-primary w-100" disabled="@submitting">
+            @(submitting ? "Вход..." : "Войти")
+        </button>
+    </EditForm>
+
+    <a class="d-block mt-3 text-center" href="admin/login">Вход администратора</a>
+</div>
+
+@code {
+    private LoginRequest form = new();
+    private bool submitting;
+    private string? error;
+
+    private async Task LoginAsync()
+    {
+        submitting = true;
+        error = null;
+
+        try
+        {
+            await Api.LoginAsync(form);
+            Navigation.NavigateTo("patients");
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+        finally
+        {
+            submitting = false;
+        }
+    }
+}

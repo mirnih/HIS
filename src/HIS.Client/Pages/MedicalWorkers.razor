@@ -1,4 +1,5 @@
 @page "/admin/medical-workers"
+@attribute [Authorize(Roles = "Administrator")]
 @inject ApiClient Api
 
 <PageTitle>Медработники</PageTitle>
@@ -14,6 +15,32 @@
 @if (!string.IsNullOrWhiteSpace(error))
 {
     <div class="alert alert-danger">@error</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(generatedPassword))
+{
+    <div class="alert alert-success">@generatedPassword</div>
+}
+
+@if (accountWorkerId.HasValue)
+{
+    <div class="content-card mb-4">
+        <h2>Создание аккаунта</h2>
+        <EditForm Model="accountForm" OnValidSubmit="CreateAccountAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+            <div class="row g-3 align-items-end">
+                <div class="col-md-6">
+                    <label class="form-label">Логин</label>
+                    <InputText class="form-control" @bind-Value="accountForm.Username" />
+                </div>
+                <div class="col-md-6 form-actions mt-0">
+                    <button class="btn btn-primary">Создать и сгенерировать пароль</button>
+                    <button class="btn btn-light" type="button" @onclick="CancelAccount">Отмена</button>
+                </div>
+            </div>
+        </EditForm>
+    </div>
 }
 
 @if (showForm)
@@ -61,6 +88,8 @@
                 <tr>
                     <th>ФИО</th>
                     <th>Должность</th>
+                    <th>Роль</th>
+                    <th>Аккаунт</th>
                     <th>Статус</th>
                     <th class="text-end">Действия</th>
                 </tr>
@@ -71,6 +100,27 @@
                     <tr>
                         <td>@worker.LastName @worker.FirstName</td>
                         <td>@worker.Position</td>
+                        <td>
+                            <div class="d-flex gap-2">
+                                <InputSelect class="form-select form-select-sm" @bind-Value="worker.Role">
+                                    <option value="@MedicalWorkerRole.Other">Другое</option>
+                                    <option value="@MedicalWorkerRole.Doctor">Доктор</option>
+                                    <option value="@MedicalWorkerRole.Nurse">Медсестра</option>
+                                    <option value="@MedicalWorkerRole.LaboratoryTechnician">Лаборант</option>
+                                </InputSelect>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => SaveRoleAsync(worker)">Сохранить</button>
+                            </div>
+                        </td>
+                        <td>
+                            @if (AccountFor(worker.Id) is { } account)
+                            {
+                                <span class="status-badge @(account.IsActive ? "status-active" : "status-muted")">@account.Username</span>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-outline-success" @onclick="() => StartAccount(worker.Id)">Создать аккаунт</button>
+                            }
+                        </td>
                         <td><span class="status-badge status-active">Активен</span></td>
                         <td class="text-end table-actions">
                             <button class="btn btn-sm btn-outline-primary" @onclick="() => StartEdit(worker)">Изменить</button>
@@ -85,11 +135,15 @@
 
 @code {
     private List<MedicalWorkerDto> workers = [];
+    private List<AccountDto> accounts = [];
     private WorkerForm form = new();
     private int? editingId;
     private bool showForm;
     private bool loading = true;
     private string? error;
+    private string? generatedPassword;
+    private int? accountWorkerId;
+    private CreateMedicalWorkerAccountRequest accountForm = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -104,6 +158,7 @@
         try
         {
             workers = await Api.GetMedicalWorkersAsync();
+            accounts = await Api.GetAccountsAsync();
         }
         catch (Exception exception)
         {
@@ -179,6 +234,62 @@
         try
         {
             await Api.DeleteMedicalWorkerAsync(id);
+            await LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+    }
+
+    private AccountDto? AccountFor(int medicalWorkerId)
+    {
+        return accounts.FirstOrDefault(x =>
+            x.MedicalWorkerId == medicalWorkerId);
+    }
+
+    private void StartAccount(int medicalWorkerId)
+    {
+        accountWorkerId = medicalWorkerId;
+        accountForm = new CreateMedicalWorkerAccountRequest();
+        generatedPassword = null;
+        error = null;
+    }
+
+    private void CancelAccount()
+    {
+        accountWorkerId = null;
+    }
+
+    private async Task CreateAccountAsync()
+    {
+        try
+        {
+            var result = await Api.CreateAccountAsync(
+                accountWorkerId!.Value,
+                accountForm);
+            generatedPassword =
+                $"Аккаунт {result.Account.Username} создан. " +
+                $"Пароль: {result.GeneratedPassword}";
+            CancelAccount();
+            await LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+    }
+
+    private async Task SaveRoleAsync(MedicalWorkerDto worker)
+    {
+        try
+        {
+            await Api.UpdateMedicalWorkerRoleAsync(
+                worker.Id,
+                new UpdateMedicalWorkerRoleRequest
+                {
+                    Role = worker.Role
+                });
             await LoadAsync();
         }
         catch (Exception exception)

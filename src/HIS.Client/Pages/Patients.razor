@@ -1,4 +1,6 @@
 @page "/patients"
+@attribute [Authorize(Roles = "Doctor,Nurse,LaboratoryTechnician,Other")]
+@inject AuthSessionService Session
 @inject ApiClient Api
 @inject NavigationManager Navigation
 
@@ -9,7 +11,10 @@
         <div class="eyebrow">Рабочее место медработника</div>
         <h1>Пациенты</h1>
     </div>
-    <button class="btn btn-primary" @onclick="StartCreate">Добавить пациента</button>
+    @if (CanCreatePatient)
+    {
+        <button class="btn btn-primary" @onclick="StartCreate">Добавить пациента</button>
+    }
 </div>
 
 @if (!string.IsNullOrWhiteSpace(error))
@@ -107,7 +112,7 @@
                             {
                                 <button class="btn btn-sm btn-primary" @onclick="() => OpenMedicalRecord(patient.Id)">Открыть ЭМК</button>
                             }
-                            else
+                            else if (CanCreatePatient)
                             {
                                 <button class="btn btn-sm btn-outline-primary" @onclick="() => CreateMedicalRecordAsync(patient.Id)">Создать ЭМК</button>
                             }
@@ -133,6 +138,9 @@
     private bool showForm;
     private bool loading = true;
     private string? error;
+
+    private bool CanCreatePatient =>
+        Session.User?.Role is "Doctor" or "Nurse";
 
     protected override async Task OnInitializedAsync()
     {

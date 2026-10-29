@@ -8,10 +8,14 @@ namespace HIS.Api.Services;
 public class PatientService
 {
     private readonly HisDbContext _db;
+    private readonly AuditService _auditService;
 
-    public PatientService(HisDbContext db)
+    public PatientService(
+        HisDbContext db,
+        AuditService auditService)
     {
         _db = db;
+        _auditService = auditService;
     }
 
     public async Task<List<PatientDto>> GetAllAsync()
@@ -52,7 +56,9 @@ public class PatientService
     }
 
     public async Task<PatientDto> CreateAsync(
-        CreatePatientRequest request)
+        CreatePatientRequest request,
+        Guid actorAccountId,
+        string actor)
     {
         var patient = new Patient
         {
@@ -65,6 +71,11 @@ public class PatientService
         };
 
         _db.Patients.Add(patient);
+
+        _auditService.AddEvent(
+            actorAccountId,
+            actor,
+            $"Добавлен пациент {patient.LastName} {patient.FirstName}.");
 
         await _db.SaveChangesAsync();
 
@@ -83,7 +94,9 @@ public class PatientService
 
     public async Task<bool> UpdateAsync(
         int id,
-        UpdatePatientRequest request)
+        UpdatePatientRequest request,
+        Guid actorAccountId,
+        string actor)
     {
         var patient = await _db.Patients.FindAsync(id);
 
@@ -99,12 +112,20 @@ public class PatientService
         patient.Gender = request.Gender!.Value;
         patient.Comment = request.Comment;
 
+        _auditService.AddEvent(
+            actorAccountId,
+            actor,
+            $"Изменены данные пациента {patient.LastName} {patient.FirstName}.");
+
         await _db.SaveChangesAsync();
 
         return true;
     }
 
-    public async Task<PatientDeleteResult> DeleteAsync(int id)
+    public async Task<PatientDeleteResult> DeleteAsync(
+        int id,
+        Guid actorAccountId,
+        string actor)
     {
         var patient = await _db.Patients.FindAsync(id);
 
@@ -122,6 +143,11 @@ public class PatientService
         }
 
         _db.Patients.Remove(patient);
+
+        _auditService.AddEvent(
+            actorAccountId,
+            actor,
+            $"Удалён пациент {patient.LastName} {patient.FirstName}.");
 
         await _db.SaveChangesAsync();
 

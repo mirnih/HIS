@@ -1,14 +1,28 @@
-﻿@page "/"
+@page "/"
+@attribute [AllowAnonymous]
 
 <PageTitle>HIS</PageTitle>
 
 <div class="welcome-card">
     <div class="eyebrow">Госпитальная информационная система</div>
     <h1>HIS</h1>
-    <p>Выберите рабочий раздел.</p>
+    <p>Выберите рабочее место.</p>
     <div class="welcome-actions">
-        <a class="btn btn-primary" href="patients">Пациенты и ЭМК</a>
-        <a class="btn btn-outline-primary" href="admin/medical-workers">Медработники</a>
-        <a class="btn btn-outline-primary" href="admin/diagnoses">Диагнозы</a>
+        <AuthorizeView Roles="Administrator">
+            <Authorized>
+                <a class="btn btn-primary" href="admin/medical-workers">Рабочее место администратора</a>
+            </Authorized>
+        </AuthorizeView>
+        <AuthorizeView Roles="Doctor,Nurse,LaboratoryTechnician,Other">
+            <Authorized>
+                <a class="btn btn-primary" href="patients">Рабочее место медработника</a>
+            </Authorized>
+        </AuthorizeView>
+        <AuthorizeView>
+            <NotAuthorized>
+                <a class="btn btn-primary" href="login">Вход медработника</a>
+                <a class="btn btn-outline-primary" href="admin/login">Вход администратора</a>
+            </NotAuthorized>
+        </AuthorizeView>
     </div>
 </div>

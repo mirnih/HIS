@@ -1,10 +1,13 @@
+using HIS.Api.Security;
 using HIS.Api.Services;
 using HIS.Contracts.MedicalRecords;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HIS.Api.Controllers;
 
 [ApiController]
+[Authorize(Policy = AuthorizationPolicies.MedicalWorker)]
 [Route("api/patients/{patientId:int}/medical-record")]
 public class PatientMedicalRecordsController : ControllerBase
 {
@@ -29,9 +32,13 @@ public class PatientMedicalRecordsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = AuthorizationPolicies.DoctorOrNurse)]
     public async Task<ActionResult<MedicalRecordDto>> Create(int patientId)
     {
-        var result = await _service.CreateAsync(patientId);
+        var result = await _service.CreateAsync(
+            patientId,
+            User.GetAccountId(),
+            User.GetUsername());
 
         return result.Result switch
         {

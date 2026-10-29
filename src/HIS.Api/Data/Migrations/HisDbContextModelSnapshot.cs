@@ -17,6 +17,68 @@ namespace HIS.Api.Data.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.13");
 
+            modelBuilder.Entity("HIS.Api.Models.Account", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PasswordHash")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Username")
+                        .IsUnique();
+
+                    b.ToTable("Accounts", (string)null);
+
+                    b.UseTptMappingStrategy();
+                });
+
+            modelBuilder.Entity("HIS.Api.Models.AuditEvent", b =>
+                {
+                    b.Property<Guid>("EventId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("AccountId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("EventTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("EventId");
+
+                    b.HasIndex("AccountId");
+
+                    b.ToTable("AuditEvents");
+                });
+
             modelBuilder.Entity("HIS.Api.Models.Diagnosis", b =>
                 {
                     b.Property<int>("Id")
@@ -141,6 +203,11 @@ namespace HIS.Api.Data.Migrations
                         .HasMaxLength(24)
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("Role")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(0);
+
                     b.HasKey("Id");
 
                     b.ToTable("MedicalWorkers");
@@ -205,6 +272,76 @@ namespace HIS.Api.Data.Migrations
                     b.ToTable("Prescriptions");
                 });
 
+            modelBuilder.Entity("HIS.Api.Models.RefreshToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("RefreshTokens");
+                });
+
+            modelBuilder.Entity("HIS.Api.Models.AdministratorAccount", b =>
+                {
+                    b.HasBaseType("HIS.Api.Models.Account");
+
+                    b.Property<bool>("IsTotpConfigured")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TotpSecret")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.ToTable("AdministratorAccounts", (string)null);
+                });
+
+            modelBuilder.Entity("HIS.Api.Models.MedicalWorkerAccount", b =>
+                {
+                    b.HasBaseType("HIS.Api.Models.Account");
+
+                    b.Property<int>("MedicalWorkerId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasIndex("MedicalWorkerId")
+                        .IsUnique();
+
+                    b.ToTable("MedicalWorkerAccounts", (string)null);
+                });
+
+            modelBuilder.Entity("HIS.Api.Models.AuditEvent", b =>
+                {
+                    b.HasOne("HIS.Api.Models.Account", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Account");
+                });
+
             modelBuilder.Entity("HIS.Api.Models.MedicalRecord", b =>
                 {
                     b.HasOne("HIS.Api.Models.Patient", "Patient")
@@ -265,6 +402,48 @@ namespace HIS.Api.Data.Migrations
                     b.Navigation("MedicalRecord");
                 });
 
+            modelBuilder.Entity("HIS.Api.Models.RefreshToken", b =>
+                {
+                    b.HasOne("HIS.Api.Models.Account", "Account")
+                        .WithMany("RefreshTokens")
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Account");
+                });
+
+            modelBuilder.Entity("HIS.Api.Models.AdministratorAccount", b =>
+                {
+                    b.HasOne("HIS.Api.Models.Account", null)
+                        .WithOne()
+                        .HasForeignKey("HIS.Api.Models.AdministratorAccount", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("HIS.Api.Models.MedicalWorkerAccount", b =>
+                {
+                    b.HasOne("HIS.Api.Models.Account", null)
+                        .WithOne()
+                        .HasForeignKey("HIS.Api.Models.MedicalWorkerAccount", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("HIS.Api.Models.MedicalWorker", "MedicalWorker")
+                        .WithOne("Account")
+                        .HasForeignKey("HIS.Api.Models.MedicalWorkerAccount", "MedicalWorkerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("MedicalWorker");
+                });
+
+            modelBuilder.Entity("HIS.Api.Models.Account", b =>
+                {
+                    b.Navigation("RefreshTokens");
+                });
+
             modelBuilder.Entity("HIS.Api.Models.MedicalRecord", b =>
                 {
                     b.Navigation("Diagnoses");
@@ -272,6 +451,11 @@ namespace HIS.Api.Data.Migrations
                     b.Navigation("History");
 
                     b.Navigation("Prescriptions");
+                });
+
+            modelBuilder.Entity("HIS.Api.Models.MedicalWorker", b =>
+                {
+                    b.Navigation("Account");
                 });
 
             modelBuilder.Entity("HIS.Api.Models.Patient", b =>

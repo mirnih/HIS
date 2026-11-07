@@ -1,0 +1,96 @@
+@page "/admin/setup"
+@attribute [AllowAnonymous]
+@inject ApiClient Api
+@inject NavigationManager Navigation
+
+<PageTitle>Настройка администратора</PageTitle>
+
+<div class="auth-card auth-card-wide">
+    <div class="eyebrow">HIS · Первоначальная настройка</div>
+    <h1>Администратор</h1>
+
+    @if (!string.IsNullOrWhiteSpace(error))
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    @if (setup is null)
+    {
+        <p class="text-secondary mt-2">Задайте пароль администратора.</p>
+        <EditForm Model="startForm" OnValidSubmit="StartAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+            <div class="mb-3">
+                <label class="form-label">Пароль</label>
+                <InputText class="form-control" type="password" @bind-Value="startForm.Password" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Подтверждение пароля</label>
+                <InputText class="form-control" type="password" @bind-Value="startForm.ConfirmPassword" />
+            </div>
+            <button class="btn btn-primary">Продолжить</button>
+        </EditForm>
+    }
+    else
+    {
+        <p>Добавьте ключ в Google Authenticator или другое приложение TOTP:</p>
+        <div class="secret-box">@setup.ManualKey</div>
+        <p class="small text-secondary mt-2">Ключ показывается только во время первоначальной настройки.</p>
+
+        <EditForm Model="confirmForm" OnValidSubmit="ConfirmAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+            <div class="mb-3">
+                <label class="form-label">Одноразовый код</label>
+                <InputText class="form-control" inputmode="numeric" maxlength="6" @bind-Value="confirmForm.Code" />
+            </div>
+            <button class="btn btn-primary">Подтвердить настройку</button>
+        </EditForm>
+    }
+</div>
+
+@code {
+    private StartAdminSetupRequest startForm = new();
+    private ConfirmAdminSetupRequest confirmForm = new();
+    private AdminSetupDto? setup;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var status = await Api.GetAdminSetupStatusAsync();
+
+        if (status.IsConfigured)
+        {
+            Navigation.NavigateTo("admin/login");
+        }
+    }
+
+    private async Task StartAsync()
+    {
+        error = null;
+
+        try
+        {
+            setup = await Api.StartAdminSetupAsync(startForm);
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+    }
+
+    private async Task ConfirmAsync()
+    {
+        error = null;
+
+        try
+        {
+            await Api.ConfirmAdminSetupAsync(confirmForm);
+            Navigation.NavigateTo("admin/login");
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+    }
+}

@@ -1,10 +1,13 @@
+using HIS.Api.Security;
 using HIS.Api.Services;
 using HIS.Contracts.MedicalRecords;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HIS.Api.Controllers;
 
 [ApiController]
+[Authorize(Policy = AuthorizationPolicies.MedicalWorker)]
 [Route("api/medical-records/{medicalRecordId:int}")]
 public class MedicalRecordsController : ControllerBase
 {
@@ -16,11 +19,17 @@ public class MedicalRecordsController : ControllerBase
     }
 
     [HttpPost("diagnoses")]
+    [Authorize(Policy = AuthorizationPolicies.Doctor)]
     public async Task<IActionResult> AddDiagnosis(
         int medicalRecordId,
         AddDiagnosisRequest request)
     {
-        var result = await _service.AddDiagnosisAsync(medicalRecordId, request);
+        var result = await _service.AddDiagnosisAsync(
+            medicalRecordId,
+            request,
+            User.GetMedicalWorkerId(),
+            User.GetAccountId(),
+            User.GetUsername());
 
         return ToActionResult(
             result,
@@ -28,51 +37,54 @@ public class MedicalRecordsController : ControllerBase
     }
 
     [HttpDelete("diagnoses/{diagnosisId:int}")]
+    [Authorize(Policy = AuthorizationPolicies.Doctor)]
     public async Task<IActionResult> RemoveDiagnosis(
         int medicalRecordId,
-        int diagnosisId,
-        RemoveDiagnosisRequest request)
+        int diagnosisId)
     {
         var result = await _service.RemoveDiagnosisAsync(
             medicalRecordId,
             diagnosisId,
-            request);
+            User.GetMedicalWorkerId(),
+            User.GetAccountId(),
+            User.GetUsername());
 
         return ToActionResult(result);
     }
 
     [HttpPost("prescriptions")]
+    [Authorize(Policy = AuthorizationPolicies.Doctor)]
     public async Task<ActionResult<PrescriptionDto>> AddPrescription(
         int medicalRecordId,
         AddPrescriptionRequest request)
     {
         var result = await _service.AddPrescriptionAsync(
             medicalRecordId,
-            request);
+            request,
+            User.GetMedicalWorkerId(),
+            User.GetAccountId(),
+            User.GetUsername());
 
         if (result.Result == MedicalRecordOperationResult.NotFound)
         {
             return NotFound();
         }
 
-        if (result.Result == MedicalRecordOperationResult.InvalidMedicalWorker)
-        {
-            return BadRequest("Необходимо указать действующего медработника.");
-        }
-
         return Ok(result.Prescription);
     }
 
     [HttpPost("prescriptions/{prescriptionId:int}/cancel")]
+    [Authorize(Policy = AuthorizationPolicies.Doctor)]
     public async Task<IActionResult> CancelPrescription(
         int medicalRecordId,
-        int prescriptionId,
-        CancelPrescriptionRequest request)
+        int prescriptionId)
     {
         var result = await _service.CancelPrescriptionAsync(
             medicalRecordId,
             prescriptionId,
-            request);
+            User.GetMedicalWorkerId(),
+            User.GetAccountId(),
+            User.GetUsername());
 
         return ToActionResult(
             result,
@@ -80,6 +92,7 @@ public class MedicalRecordsController : ControllerBase
     }
 
     [HttpPut("prescriptions/{prescriptionId:int}")]
+    [Authorize(Policy = AuthorizationPolicies.Doctor)]
     public async Task<ActionResult<PrescriptionDto>> EditPrescription(
         int medicalRecordId,
         int prescriptionId,
@@ -88,16 +101,14 @@ public class MedicalRecordsController : ControllerBase
         var result = await _service.EditPrescriptionAsync(
             medicalRecordId,
             prescriptionId,
-            request);
+            request,
+            User.GetMedicalWorkerId(),
+            User.GetAccountId(),
+            User.GetUsername());
 
         if (result.Result == MedicalRecordOperationResult.NotFound)
         {
             return NotFound();
-        }
-
-        if (result.Result == MedicalRecordOperationResult.InvalidMedicalWorker)
-        {
-            return BadRequest("Необходимо указать действующего медработника.");
         }
 
         if (result.Result == MedicalRecordOperationResult.Conflict)
@@ -129,8 +140,6 @@ public class MedicalRecordsController : ControllerBase
         return result switch
         {
             MedicalRecordOperationResult.NotFound => NotFound(),
-            MedicalRecordOperationResult.InvalidMedicalWorker =>
-                BadRequest("Необходимо указать действующего медработника."),
             MedicalRecordOperationResult.Conflict => Conflict(conflictMessage),
             _ => NoContent()
         };

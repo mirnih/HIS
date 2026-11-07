@@ -1,0 +1,13 @@
+{
+	auto_https disable_redirects
+}
+
+https://localhost:7190 {
+	bind 127.0.0.1 ::1
+
+	tls ./src/HIS.Api/Certificates/server.crt ./src/HIS.Api/Certificates/server.key {
+		protocols tls1.3 tls1.3
+	}
+
+	reverse_proxy http://127.0.0.1:5216
+}

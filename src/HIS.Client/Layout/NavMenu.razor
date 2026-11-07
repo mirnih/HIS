@@ -1,4 +1,7 @@
-﻿<div class="top-row navbar navbar-dark">
+﻿@inject ApiClient Api
+@inject NavigationManager Navigation
+
+<div class="top-row navbar navbar-dark">
     <div class="container-fluid">
         <a class="navbar-brand" href="">HIS</a>
         <button title="Меню" class="navbar-toggler" @onclick="ToggleNavMenu">
@@ -8,35 +11,76 @@
 </div>
 
 <div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
-    <nav class="nav flex-column px-2">
-        <div class="menu-caption">Администратор</div>
-        <div class="nav-item">
-            <NavLink class="nav-link" href="admin/medical-workers">
-                <span class="nav-symbol">＋</span> Медработники
-            </NavLink>
-        </div>
-        <div class="nav-item">
-            <NavLink class="nav-link" href="admin/diagnoses">
-                <span class="nav-symbol">≡</span> Диагнозы
-            </NavLink>
-        </div>
+    <nav class="nav flex-column px-2 h-100">
+        <AuthorizeView Roles="Administrator">
+            <Authorized>
+                <div class="menu-caption">Администратор</div>
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="admin/medical-workers">
+                        <span class="nav-symbol">＋</span> Медработники
+                    </NavLink>
+                </div>
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="admin/diagnoses">
+                        <span class="nav-symbol">≡</span> Диагнозы
+                    </NavLink>
+                </div>
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="admin/accounts">
+                        <span class="nav-symbol">●</span> Аккаунты
+                    </NavLink>
+                </div>
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="admin/audit">
+                        <span class="nav-symbol">↻</span> Аудит
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
 
-        <div class="menu-caption mt-4">Медработник</div>
-        <div class="nav-item">
-            <NavLink class="nav-link" href="patients">
-                <span class="nav-symbol">●</span> Пациенты
-            </NavLink>
-        </div>
+        <AuthorizeView Roles="Doctor,Nurse,LaboratoryTechnician,Other">
+            <Authorized>
+                <div class="menu-caption">Медработник</div>
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="patients">
+                        <span class="nav-symbol">●</span> Пациенты
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+
+        <AuthorizeView>
+            <Authorized Context="current">
+                <div class="mt-auto pb-3 px-2 text-light small">
+                    <div class="mb-2">@current.User.Identity?.Name</div>
+                    <button class="btn btn-sm btn-outline-light w-100" @onclick="LogoutAsync">Выйти</button>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                <div class="menu-caption">Вход</div>
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="login">Медработник</NavLink>
+                </div>
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="admin/login">Администратор</NavLink>
+                </div>
+            </NotAuthorized>
+        </AuthorizeView>
     </nav>
 </div>
 
 @code {
     private bool collapseNavMenu = true;
-
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
 
     private void ToggleNavMenu()
     {
         collapseNavMenu = !collapseNavMenu;
+    }
+
+    private async Task LogoutAsync()
+    {
+        await Api.LogoutAsync();
+        Navigation.NavigateTo("login", forceLoad: true);
     }
 }

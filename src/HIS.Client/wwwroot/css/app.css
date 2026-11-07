@@ -75,6 +75,28 @@ h2 {
     margin: .8rem 0 1.5rem;
 }
 
+.auth-card {
+    background: #fff;
+    border: 1px solid #e4eaf0;
+    border-radius: .8rem;
+    box-shadow: 0 8px 26px rgba(30, 48, 70, .08);
+    margin: 7vh auto 0;
+    max-width: 460px;
+    padding: 2rem;
+}
+
+.auth-card-wide {
+    max-width: 620px;
+}
+
+.secret-box {
+    background: #eef3f8;
+    border-radius: .55rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    overflow-wrap: anywhere;
+    padding: 1rem;
+}
+
 .welcome-actions,
 .form-actions,
 .table-actions,

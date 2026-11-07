@@ -1,0 +1,97 @@
+@page "/admin/login"
+@attribute [AllowAnonymous]
+@inject ApiClient Api
+@inject NavigationManager Navigation
+
+<PageTitle>Вход администратора</PageTitle>
+
+<div class="auth-card">
+    <div class="eyebrow">HIS · Администратор</div>
+    <h1>Вход</h1>
+
+    @if (loading)
+    {
+        <p class="text-secondary mt-3">Проверка настройки...</p>
+    }
+    else
+    {
+        @if (!string.IsNullOrWhiteSpace(error))
+        {
+            <div class="alert alert-danger">@error</div>
+        }
+
+        <EditForm Model="form" OnValidSubmit="LoginAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+            <div class="mb-3">
+                <label class="form-label">Логин</label>
+                <InputText class="form-control" @bind-Value="form.Username" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Пароль</label>
+                <InputText class="form-control" type="password" @bind-Value="form.Password" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Код TOTP</label>
+                <InputText class="form-control" inputmode="numeric" maxlength="6" @bind-Value="form.TotpCode" />
+            </div>
+            <button class="btn btn-primary w-100" disabled="@submitting">
+                @(submitting ? "Вход..." : "Войти")
+            </button>
+        </EditForm>
+    }
+
+    <a class="d-block mt-3 text-center" href="login">Вход медработника</a>
+</div>
+
+@code {
+    private LoginRequest form = new()
+    {
+        Username = "admin"
+    };
+    private bool loading = true;
+    private bool submitting;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var status = await Api.GetAdminSetupStatusAsync();
+
+            if (!status.IsConfigured)
+            {
+                Navigation.NavigateTo("admin/setup");
+                return;
+            }
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task LoginAsync()
+    {
+        submitting = true;
+        error = null;
+
+        try
+        {
+            await Api.LoginAsync(form);
+            Navigation.NavigateTo("admin/medical-workers");
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+        finally
+        {
+            submitting = false;
+        }
+    }
+}

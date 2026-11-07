@@ -1,0 +1,96 @@
+@page "/admin/audit"
+@attribute [Authorize(Roles = "Administrator")]
+@implements IAsyncDisposable
+@inject ApiClient Api
+
+<PageTitle>Аудит</PageTitle>
+
+<div class="page-header">
+    <div>
+        <div class="eyebrow">Администратор · Обновление каждые 2 секунды</div>
+        <h1>Аудит</h1>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(error))
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+<div class="content-card table-responsive">
+    @if (events.Count == 0)
+    {
+        <p class="empty-state">Событий пока нет.</p>
+    }
+    else
+    {
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Время</th>
+                    <th>Актор</th>
+                    <th>Событие</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in events)
+                {
+                    <tr>
+                        <td class="text-nowrap">@item.EventTime.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")</td>
+                        <td>@item.Actor</td>
+                        <td>@item.Message</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private readonly CancellationTokenSource cancellation = new();
+    private List<AuditEventDto> events = [];
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        _ = PollAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            events = await Api.GetAuditAsync();
+            error = null;
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+    }
+
+    private async Task PollAsync()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellation.Token))
+            {
+                await LoadAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        cancellation.Cancel();
+        cancellation.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

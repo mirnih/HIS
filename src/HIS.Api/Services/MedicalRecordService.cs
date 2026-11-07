@@ -11,10 +11,14 @@ public class MedicalRecordService
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly HisDbContext _db;
+    private readonly AuditService _auditService;
 
-    public MedicalRecordService(HisDbContext db)
+    public MedicalRecordService(
+        HisDbContext db,
+        AuditService auditService)
     {
         _db = db;
+        _auditService = auditService;
     }
 
     public async Task<MedicalRecordDto?> GetByPatientIdAsync(int patientId)
@@ -29,7 +33,10 @@ public class MedicalRecordService
         return medicalRecord is null ? null : ToDto(medicalRecord);
     }
 
-    public async Task<(MedicalRecordOperationResult Result, MedicalRecordDto? MedicalRecord)> CreateAsync(int patientId)
+    public async Task<(MedicalRecordOperationResult Result, MedicalRecordDto? MedicalRecord)> CreateAsync(
+        int patientId,
+        Guid actorAccountId,
+        string actor)
     {
         if (!await _db.Patients.AnyAsync(x => x.Id == patientId))
         {
@@ -48,6 +55,12 @@ public class MedicalRecordService
         };
 
         _db.MedicalRecords.Add(medicalRecord);
+
+        _auditService.AddEvent(
+            actorAccountId,
+            actor,
+            $"Создана ЭМК пациента с идентификатором {patientId}.");
+
         await _db.SaveChangesAsync();
 
         return (MedicalRecordOperationResult.Success, ToDto(medicalRecord));
@@ -55,19 +68,17 @@ public class MedicalRecordService
 
     public async Task<MedicalRecordOperationResult> AddDiagnosisAsync(
         int medicalRecordId,
-        AddDiagnosisRequest request)
+        AddDiagnosisRequest request,
+        int medicalWorkerId,
+        Guid actorAccountId,
+        string actor)
     {
         if (!await MedicalRecordExistsAsync(medicalRecordId))
         {
             return MedicalRecordOperationResult.NotFound;
         }
 
-        if (!await IsActiveMedicalWorkerAsync(request.MedicalWorkerId!.Value))
-        {
-            return MedicalRecordOperationResult.InvalidMedicalWorker;
-        }
-
-        var diagnosis = await _db.Diagnoses.FindAsync(request.DiagnosisId!.Value);
+        var diagnosis = await _db.Diagnoses.FindAsync(request.DiagnosisId);
 
         if (diagnosis is null)
         {
@@ -89,7 +100,7 @@ public class MedicalRecordService
 
         _db.MedicalRecordHistory.Add(CreateHistory(
             medicalRecordId,
-            request.MedicalWorkerId.Value,
+            medicalWorkerId,
             MedicalRecordAction.DiagnosisAdded,
             new
             {
@@ -97,6 +108,11 @@ public class MedicalRecordService
                 diagnosis.Code,
                 diagnosis.Name
             }));
+
+        _auditService.AddEvent(
+            actorAccountId,
+            actor,
+            $"В ЭМК {medicalRecordId} добавлен диагноз {diagnosis.Code}.");
 
         await _db.SaveChangesAsync();
 
@@ -106,16 +122,13 @@ public class MedicalRecordService
     public async Task<MedicalRecordOperationResult> RemoveDiagnosisAsync(
         int medicalRecordId,
         int diagnosisId,
-        RemoveDiagnosisRequest request)
+        int medicalWorkerId,
+        Guid actorAccountId,
+        string actor)
     {
         if (!await MedicalRecordExistsAsync(medicalRecordId))
         {
             return MedicalRecordOperationResult.NotFound;
-        }
-
-        if (!await IsActiveMedicalWorkerAsync(request.MedicalWorkerId!.Value))
-        {
-            return MedicalRecordOperationResult.InvalidMedicalWorker;
         }
 
         var medicalRecordDiagnosis = await _db.MedicalRecordDiagnoses
@@ -133,7 +146,7 @@ public class MedicalRecordService
 
         _db.MedicalRecordHistory.Add(CreateHistory(
             medicalRecordId,
-            request.MedicalWorkerId.Value,
+            medicalWorkerId,
             MedicalRecordAction.DiagnosisRemoved,
             new
             {
@@ -142,6 +155,12 @@ public class MedicalRecordService
                 medicalRecordDiagnosis.Diagnosis.Name
             }));
 
+        _auditService.AddEvent(
+            actorAccountId,
+            actor,
+            $"Из ЭМК {medicalRecordId} удалён диагноз " +
+            $"{medicalRecordDiagnosis.Diagnosis.Code}.");
+
         await _db.SaveChangesAsync();
 
         return MedicalRecordOperationResult.Success;
@@ -149,16 +168,14 @@ public class MedicalRecordService
 
     public async Task<(MedicalRecordOperationResult Result, PrescriptionDto? Prescription)> AddPrescriptionAsync(
         int medicalRecordId,
-        AddPrescriptionRequest request)
+        AddPrescriptionRequest request,
+        int medicalWorkerId,
+        Guid actorAccountId,
+        string actor)
     {
         if (!await MedicalRecordExistsAsync(medicalRecordId))
         {
             return (MedicalRecordOperationResult.NotFound, null);
-        }
-
-        if (!await IsActiveMedicalWorkerAsync(request.MedicalWorkerId!.Value))
-        {
-            return (MedicalRecordOperationResult.InvalidMedicalWorker, null);
         }
 
         await using var transaction = await _db.Database.BeginTransactionAsync();
@@ -175,13 +192,18 @@ public class MedicalRecordService
 
         _db.MedicalRecordHistory.Add(CreateHistory(
             medicalRecordId,
-            request.MedicalWorkerId.Value,
+            medicalWorkerId,
             MedicalRecordAction.PrescriptionAdded,
             new
             {
                 PrescriptionId = prescription.Id,
                 prescription.Text
             }));
+
+        _auditService.AddEvent(
+            actorAccountId,
+            actor,
+            $"В ЭМК {medicalRecordId} добавлено назначение {prescription.Id}.");
 
         await _db.SaveChangesAsync();
         await transaction.CommitAsync();
@@ -199,16 +221,13 @@ public class MedicalRecordService
     public async Task<MedicalRecordOperationResult> CancelPrescriptionAsync(
         int medicalRecordId,
         int prescriptionId,
-        CancelPrescriptionRequest request)
+        int medicalWorkerId,
+        Guid actorAccountId,
+        string actor)
     {
         if (!await MedicalRecordExistsAsync(medicalRecordId))
         {
             return MedicalRecordOperationResult.NotFound;
-        }
-
-        if (!await IsActiveMedicalWorkerAsync(request.MedicalWorkerId!.Value))
-        {
-            return MedicalRecordOperationResult.InvalidMedicalWorker;
         }
 
         var prescription = await _db.Prescriptions.FirstOrDefaultAsync(x =>
@@ -229,13 +248,18 @@ public class MedicalRecordService
 
         _db.MedicalRecordHistory.Add(CreateHistory(
             medicalRecordId,
-            request.MedicalWorkerId.Value,
+            medicalWorkerId,
             MedicalRecordAction.PrescriptionCancelled,
             new
             {
                 PrescriptionId = prescription.Id,
                 prescription.Text
             }));
+
+        _auditService.AddEvent(
+            actorAccountId,
+            actor,
+            $"В ЭМК {medicalRecordId} отменено назначение {prescription.Id}.");
 
         await _db.SaveChangesAsync();
 
@@ -245,16 +269,14 @@ public class MedicalRecordService
     public async Task<(MedicalRecordOperationResult Result, PrescriptionDto? Prescription)> EditPrescriptionAsync(
         int medicalRecordId,
         int prescriptionId,
-        EditPrescriptionRequest request)
+        EditPrescriptionRequest request,
+        int medicalWorkerId,
+        Guid actorAccountId,
+        string actor)
     {
         if (!await MedicalRecordExistsAsync(medicalRecordId))
         {
             return (MedicalRecordOperationResult.NotFound, null);
-        }
-
-        if (!await IsActiveMedicalWorkerAsync(request.MedicalWorkerId!.Value))
-        {
-            return (MedicalRecordOperationResult.InvalidMedicalWorker, null);
         }
 
         var oldPrescription = await _db.Prescriptions.FirstOrDefaultAsync(x =>
@@ -287,7 +309,7 @@ public class MedicalRecordService
 
         _db.MedicalRecordHistory.Add(CreateHistory(
             medicalRecordId,
-            request.MedicalWorkerId.Value,
+            medicalWorkerId,
             MedicalRecordAction.PrescriptionEdited,
             new
             {
@@ -296,6 +318,12 @@ public class MedicalRecordService
                 NewPrescriptionId = newPrescription.Id,
                 NewText = newPrescription.Text
             }));
+
+        _auditService.AddEvent(
+            actorAccountId,
+            actor,
+            $"В ЭМК {medicalRecordId} изменено назначение " +
+            $"{oldPrescription.Id}; создано назначение {newPrescription.Id}.");
 
         await _db.SaveChangesAsync();
         await transaction.CommitAsync();
@@ -337,13 +365,6 @@ public class MedicalRecordService
     private Task<bool> MedicalRecordExistsAsync(int medicalRecordId)
     {
         return _db.MedicalRecords.AnyAsync(x => x.Id == medicalRecordId);
-    }
-
-    private Task<bool> IsActiveMedicalWorkerAsync(int medicalWorkerId)
-    {
-        return _db.MedicalWorkers.AnyAsync(x =>
-            x.Id == medicalWorkerId &&
-            !x.IsDeleted);
     }
 
     private static MedicalRecordHistory CreateHistory(

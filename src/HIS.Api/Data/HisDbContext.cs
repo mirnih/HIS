@@ -1,4 +1,5 @@
 using HIS.Api.Models;
+using HIS.Contracts.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace HIS.Api.Data;
@@ -14,6 +15,11 @@ public class HisDbContext : DbContext
     public DbSet<MedicalRecordDiagnosis> MedicalRecordDiagnoses => Set<MedicalRecordDiagnosis>();
     public DbSet<Prescription> Prescriptions => Set<Prescription>();
     public DbSet<MedicalRecordHistory> MedicalRecordHistory => Set<MedicalRecordHistory>();
+    public DbSet<Account> Accounts => Set<Account>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
+    public DbSet<AdministratorAccount> AdministratorAccounts => Set<AdministratorAccount>();
+    public DbSet<MedicalWorkerAccount> MedicalWorkerAccounts => Set<MedicalWorkerAccount>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -73,6 +79,55 @@ public class HisDbContext : DbContext
             .HasOne(x => x.MedicalWorker)
             .WithMany()
             .HasForeignKey(x => x.MedicalWorkerId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Account>()
+            .HasIndex(x => x.Username)
+            .IsUnique();
+
+        modelBuilder.Entity<MedicalWorkerAccount>()
+            .HasIndex(account => account.MedicalWorkerId)
+            .IsUnique();
+
+        modelBuilder.Entity<Account>()
+            .ToTable("Accounts");
+
+        modelBuilder.Entity<AdministratorAccount>()
+            .ToTable("AdministratorAccounts");
+
+        modelBuilder.Entity<MedicalWorkerAccount>()
+            .ToTable("MedicalWorkerAccounts");
+
+        modelBuilder.Entity<MedicalWorkerAccount>()
+            .HasOne(account => account.MedicalWorker)
+            .WithOne(worker => worker.Account)
+            .HasForeignKey<MedicalWorkerAccount>(account => account.MedicalWorkerId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<RefreshToken>()
+            .HasOne(x => x.Account)
+            .WithMany(x => x.RefreshTokens)
+            .HasForeignKey(x => x.AccountId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<RefreshToken>()
+            .HasIndex(x => x.TokenHash)
+            .IsUnique();
+
+        modelBuilder.Entity<RefreshToken>()
+            .HasIndex(x => x.AccountId);
+
+        modelBuilder.Entity<MedicalWorker>()
+            .Property(x => x.Role)
+            .HasDefaultValue(MedicalWorkerRole.Other);
+
+        modelBuilder.Entity<AuditEvent>()
+            .HasKey(auditEvent => auditEvent.EventId);
+
+        modelBuilder.Entity<AuditEvent>()
+            .HasOne(auditEvent => auditEvent.Account)
+            .WithMany()
+            .HasForeignKey(auditEvent => auditEvent.AccountId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

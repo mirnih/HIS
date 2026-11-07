@@ -1,0 +1,141 @@
+@page "/admin/accounts"
+@attribute [Authorize(Roles = "Administrator")]
+@inject ApiClient Api
+
+<PageTitle>Аккаунты</PageTitle>
+
+<div class="page-header">
+    <div>
+        <div class="eyebrow">Администратор</div>
+        <h1>Аккаунты</h1>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <div class="alert @(isError ? "alert-danger" : "alert-success")">@message</div>
+}
+
+<div class="content-card table-responsive">
+    @if (loading)
+    {
+        <p class="text-secondary mb-0">Загрузка...</p>
+    }
+    else
+    {
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Логин</th>
+                    <th>Медработник</th>
+                    <th>Роль</th>
+                    <th>Статус</th>
+                    <th>Создан</th>
+                    <th class="text-end">Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var account in accounts)
+                {
+                    <tr>
+                        <td class="fw-semibold">@account.Username</td>
+                        <td>@(account.IsAdministrator ? "—" : account.MedicalWorkerFullName)</td>
+                        <td>@(account.IsAdministrator ? "Администратор" : RoleText(account.MedicalWorkerRole))</td>
+                        <td>
+                            <span class="status-badge @(account.IsActive ? "status-active" : "status-muted")">
+                                @(account.IsActive ? "Активен" : "Неактивен")
+                            </span>
+                        </td>
+                        <td>@account.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy")</td>
+                        <td class="text-end table-actions">
+                            @if (!account.IsAdministrator)
+                            {
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => RegenerateAsync(account.Id)">Новый пароль</button>
+                                <button class="btn btn-sm @(account.IsActive ? "btn-outline-danger" : "btn-outline-success")"
+                                        @onclick="() => ToggleActiveAsync(account)">
+                                    @(account.IsActive ? "Деактивировать" : "Активировать")
+                                </button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private List<AccountDto> accounts = [];
+    private bool loading = true;
+    private bool isError;
+    private string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+
+        try
+        {
+            accounts = await Api.GetAccountsAsync();
+        }
+        catch (Exception exception)
+        {
+            ShowError(exception.Message);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task RegenerateAsync(Guid accountId)
+    {
+        try
+        {
+            var result = await Api.RegeneratePasswordAsync(accountId);
+            isError = false;
+            message = $"Новый пароль для {result.Account.Username}: {result.GeneratedPassword}";
+            await LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            ShowError(exception.Message);
+        }
+    }
+
+    private async Task ToggleActiveAsync(AccountDto account)
+    {
+        try
+        {
+            await Api.SetAccountActiveAsync(account.Id, !account.IsActive);
+            message = null;
+            await LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            ShowError(exception.Message);
+        }
+    }
+
+    private void ShowError(string value)
+    {
+        isError = true;
+        message = value;
+    }
+
+    private static string RoleText(MedicalWorkerRole? role)
+    {
+        return role switch
+        {
+            MedicalWorkerRole.Doctor => "Доктор",
+            MedicalWorkerRole.Nurse => "Медсестра",
+            MedicalWorkerRole.LaboratoryTechnician => "Лаборант",
+            _ => "Другое"
+        };
+    }
+}

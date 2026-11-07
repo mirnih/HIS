@@ -1,10 +1,13 @@
+using HIS.Api.Security;
 using HIS.Api.Services;
 using HIS.Contracts.Patients;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HIS.Api.Controllers;
 
 [ApiController]
+[Authorize(Policy = AuthorizationPolicies.MedicalWorker)]
 [Route("api/patients")]
 public class PatientsController : ControllerBase
 {
@@ -37,10 +40,14 @@ public class PatientsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = AuthorizationPolicies.DoctorOrNurse)]
     public async Task<ActionResult<PatientDto>> Create(
         CreatePatientRequest request)
     {
-        var patient = await _service.CreateAsync(request);
+        var patient = await _service.CreateAsync(
+            request,
+            User.GetAccountId(),
+            User.GetUsername());
 
         return CreatedAtAction(
             nameof(GetById),
@@ -53,7 +60,11 @@ public class PatientsController : ControllerBase
         int id,
         UpdatePatientRequest request)
     {
-        var updated = await _service.UpdateAsync(id, request);
+        var updated = await _service.UpdateAsync(
+            id,
+            request,
+            User.GetAccountId(),
+            User.GetUsername());
 
         if (!updated)
         {
@@ -66,7 +77,10 @@ public class PatientsController : ControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var result = await _service.DeleteAsync(id);
+        var result = await _service.DeleteAsync(
+            id,
+            User.GetAccountId(),
+            User.GetUsername());
 
         return result switch
         {

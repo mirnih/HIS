@@ -1,6 +1,8 @@
 @page "/medical-record/{PatientId:int}"
+@attribute [Authorize(Roles = "Doctor,Nurse,LaboratoryTechnician,Other")]
 @using System.Text.Json
 @inject ApiClient Api
+@inject AuthSessionService Session
 
 <PageTitle>Электронная медицинская карта</PageTitle>
 
@@ -28,25 +30,21 @@ else if (medicalRecord is not null && patient is not null)
             @if (isEditing)
             {
                 <span class="status-badge status-active">Редактирование разрешено</span>
-                <div class="small text-secondary mt-2">@SelectedWorkerName()</div>
+                <div class="small text-secondary mt-2">@Session.User?.Username</div>
                 <button class="btn btn-sm btn-outline-secondary mt-2" @onclick="Lock">Заблокировать</button>
+            }
+            else if (CanEdit)
+            {
+                <span class="status-badge status-muted">Только просмотр</span>
+                <button class="btn btn-primary btn-sm mt-2 w-100"
+                        @onclick="Unlock">
+                    Разблокировать для редактирования
+                </button>
             }
             else
             {
                 <span class="status-badge status-muted">Только просмотр</span>
-                <label class="form-label mt-3">Кто вносит изменения</label>
-                <InputSelect class="form-select form-select-sm" @bind-Value="selectedMedicalWorkerId">
-                    <option value="">Выберите медработника</option>
-                    @foreach (var worker in workers)
-                    {
-                        <option value="@worker.Id">@worker.LastName @worker.FirstName — @worker.Position</option>
-                    }
-                </InputSelect>
-                <button class="btn btn-primary btn-sm mt-2 w-100"
-                        disabled="@(selectedMedicalWorkerId is null)"
-                        @onclick="Unlock">
-                    Разблокировать для редактирования
-                </button>
+                <div class="small text-secondary mt-2">Редактирование доступно только доктору.</div>
             }
         </div>
     </div>
@@ -208,10 +206,8 @@ else if (medicalRecord is not null && patient is not null)
 
     private PatientDto? patient;
     private MedicalRecordDto? medicalRecord;
-    private List<MedicalWorkerDto> workers = [];
     private List<DiagnosisDto> diagnoses = [];
     private List<MedicalRecordHistoryDto> history = [];
-    private int? selectedMedicalWorkerId;
     private int? selectedDiagnosisId;
     private int? editingPrescriptionId;
     private string newPrescriptionText = string.Empty;
@@ -220,6 +216,8 @@ else if (medicalRecord is not null && patient is not null)
     private bool isEditing;
     private bool loading = true;
     private string? error;
+
+    private bool CanEdit => Session.User?.Role == "Doctor";
 
     protected override async Task OnParametersSetAsync()
     {
@@ -235,7 +233,6 @@ else if (medicalRecord is not null && patient is not null)
         {
             patient = await Api.GetPatientAsync(PatientId);
             medicalRecord = await Api.GetMedicalRecordAsync(PatientId);
-            workers = await Api.GetMedicalWorkersAsync();
             diagnoses = await Api.GetDiagnosesAsync();
             history = await Api.GetMedicalRecordHistoryAsync(medicalRecord.Id);
         }
@@ -257,7 +254,7 @@ else if (medicalRecord is not null && patient is not null)
 
     private void Unlock()
     {
-        if (selectedMedicalWorkerId is not null)
+        if (CanEdit)
         {
             isEditing = true;
             error = null;
@@ -273,7 +270,6 @@ else if (medicalRecord is not null && patient is not null)
     private void Lock()
     {
         isEditing = false;
-        selectedMedicalWorkerId = null;
         selectedDiagnosisId = null;
         editingPrescriptionId = null;
         newPrescriptionText = string.Empty;
@@ -286,8 +282,7 @@ else if (medicalRecord is not null && patient is not null)
             medicalRecord!.Id,
             new AddDiagnosisRequest
             {
-                MedicalWorkerId = selectedMedicalWorkerId,
-                DiagnosisId = selectedDiagnosisId
+                DiagnosisId = selectedDiagnosisId!.Value
             }));
     }
 
@@ -295,11 +290,7 @@ else if (medicalRecord is not null && patient is not null)
     {
         await RunChangeAsync(() => Api.RemoveDiagnosisAsync(
             medicalRecord!.Id,
-            diagnosisId,
-            new RemoveDiagnosisRequest
-            {
-                MedicalWorkerId = selectedMedicalWorkerId
-            }));
+            diagnosisId));
     }
 
     private async Task AddPrescriptionAsync()
@@ -308,7 +299,6 @@ else if (medicalRecord is not null && patient is not null)
             medicalRecord!.Id,
             new AddPrescriptionRequest
             {
-                MedicalWorkerId = selectedMedicalWorkerId,
                 Text = newPrescriptionText.Trim()
             }));
     }
@@ -317,11 +307,7 @@ else if (medicalRecord is not null && patient is not null)
     {
         await RunChangeAsync(() => Api.CancelPrescriptionAsync(
             medicalRecord!.Id,
-            prescriptionId,
-            new CancelPrescriptionRequest
-            {
-                MedicalWorkerId = selectedMedicalWorkerId
-            }));
+            prescriptionId));
     }
 
     private void StartPrescriptionEdit(PrescriptionDto prescription)
@@ -345,7 +331,6 @@ else if (medicalRecord is not null && patient is not null)
             prescriptionId,
             new EditPrescriptionRequest
             {
-                MedicalWorkerId = selectedMedicalWorkerId,
                 Text = editedPrescriptionText.Trim()
             }));
     }
@@ -370,14 +355,6 @@ else if (medicalRecord is not null && patient is not null)
     {
         var currentIds = medicalRecord!.Diagnoses.Select(x => x.DiagnosisId).ToHashSet();
         return diagnoses.Where(x => !currentIds.Contains(x.Id));
-    }
-
-    private string SelectedWorkerName()
-    {
-        var worker = workers.FirstOrDefault(x => x.Id == selectedMedicalWorkerId);
-        return worker is null
-            ? string.Empty
-            : $"{worker.LastName} {worker.FirstName}, {worker.Position}";
     }
 
     private string PatientFullName()

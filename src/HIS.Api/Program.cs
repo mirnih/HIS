@@ -1,6 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Net;
 using System.Security.Claims;
-using System.Security.Authentication;
 using System.Security.Cryptography;
 using HIS.Api.Data;
 using HIS.Api.Models;
@@ -10,22 +10,11 @@ using HIS.Api.Services;
 using HIS.Contracts.Enums;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
-
-builder.WebHost.ConfigureKestrel(options =>
-{
-    options.ConfigureHttpsDefaults(httpsOptions =>
-    {
-        httpsOptions.SslProtocols = OperatingSystem.IsMacOS()
-            ? SslProtocols.Tls12
-            : SslProtocols.Tls13;
-    });
-});
-
-// Add services to the container.
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 
@@ -165,6 +154,16 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddControllers();
 
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor |
+        ForwardedHeaders.XForwardedHost |
+        ForwardedHeaders.XForwardedProto;
+    options.KnownProxies.Add(IPAddress.Loopback);
+    options.KnownProxies.Add(IPAddress.IPv6Loopback);
+});
+
 builder.Services.AddDbContext<HisDbContext>(options => options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddCors(options =>
@@ -192,6 +191,7 @@ builder.Services.AddScoped<AccountService>();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 var app = builder.Build();
 
+app.UseForwardedHeaders();
 app.UseCors("Client");
 
 app.UseAuthentication();
